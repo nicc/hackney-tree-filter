@@ -5,8 +5,22 @@ with a species filter: type a **binomial name**, get autocomplete, add/remove sp
 as chips, and **Select all species** / **Clear all**. The map shows only the selected
 species, colour-coded, with a live count.
 
-Just open `hackney-tree-filter.html` in a browser — no build step, no dependencies
-beyond Leaflet + CARTO tiles loaded from a CDN.
+Everything lives in [`index.html`](index.html) — no build step, no dependencies beyond
+Leaflet + CARTO tiles loaded from a CDN.
+
+## Running it
+
+```
+python3 run.py
+```
+
+This serves `index.html` and proxies Hackney's WFS from the **same origin**
+(`/geoserver/ows`), so the browser's cross-origin checks never apply, and opens
+your browser automatically. Stdlib only — no dependencies. Stop with `Ctrl+C`.
+
+You can also just open `index.html` directly from disk, but the live fetch will
+almost always be blocked by CORS (see below) and you'll get the small bundled
+sample instead of live data.
 
 ## Where the data comes from
 
@@ -16,54 +30,28 @@ Hackney publishes its trees from a public GeoServer WFS as GeoJSON:
 https://map2.hackney.gov.uk/geoserver/ows
 ```
 
-The official map reads this from the **same origin**, so it never needs CORS.
-This local file is a *different* origin, so the browser applies cross-origin rules.
-Two outcomes:
+The real dataset is the **`greenspaces:tree`** layer — confirmed via the WFS's
+`GetCapabilities` listing, currently around **38,800 features**. Each feature carries
+a `species` (binomial), `common_name`, `age`, and location fields (`sitename`,
+`treelocn`, `addnlocn`). `CONFIG.layers` in `index.html` tries this layer first, then
+falls back to `planning:tree_preservation_order_point` (~630 TPO trees) if it's ever
+renamed. The app auto-detects which field names are present on whatever layer
+responds, so it isn't hardcoded to one schema.
 
-- **Live** — if Hackney's GeoServer returns permissive CORS headers, the app loads
-  the real trees and the status banner turns green.
-- **Sample** — if not (the usual case when you double-click the file and it opens as
-  `file://`), the app falls back to a small bundled set of **real Hackney trees** so
-  every control still works. Banner turns brown.
+The official Hackney map reads this same endpoint from the same origin, so it never
+needs CORS. Opening `index.html` straight from disk (`file://`) is a *different*
+origin, so the browser blocks the request unless Hackney's GeoServer sends permissive
+CORS headers:
 
-The app auto-detects the species/common-name/age fields and builds the autocomplete
-list from whatever it loads, so it adapts to either dataset.
+- **Live** — the app loads the real trees and the status banner turns green.
+- **Sample** — if the request is blocked, it falls back to a small bundled set of
+  real Hackney trees so every control still works. Banner turns brown.
 
-## Getting the full ~45,000 live trees locally
+Running via `run.py` sidesteps this entirely by serving the page and proxying the WFS
+from the same origin.
 
-Route the WFS through a tiny same-origin proxy, then point the app at it.
+## Filter semantics
 
-**Python (stdlib only):** save as `proxy.py`, run `python3 proxy.py`:
-
-```python
-import http.server, urllib.request, urllib.parse
-BASE = "https://map2.hackney.gov.uk/geoserver/ows"
-class H(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        q = urllib.parse.urlparse(self.path).query
-        with urllib.request.urlopen(f"{BASE}?{q}") as r:
-            body = r.read()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers(); self.wfile.write(body)
-http.server.HTTPServer(("127.0.0.1", 8788), H).serve_forever()
-```
-
-Then in `hackney-tree-filter.html`, change one line in `CONFIG`:
-
-```js
-geoserver: 'http://127.0.0.1:8788',
-```
-
-Serve the HTML from any static server (e.g. `python3 -m http.server 8080`) and open
-`http://127.0.0.1:8080/hackney-tree-filter.html`.
-
-## Finding the exact street-tree layer
-
-The layer name for the 45k street-tree dataset isn't documented, so `CONFIG.layers`
-tries a list of likely names and stops at the first that returns features. The
-tree-preservation-order layer is confirmed-working and sits at the end of the list,
-so "live" mode always returns *some* real Hackney data. If you find the real
-street-tree `typeName` (Hackney's GeoServer web UI lists all layers), prepend it to
-`CONFIG.layers` for the complete dataset.
+Everything is selected by default (full map). **Clear all** empties the selection
+(blank map); **Select all species** restores it; typing a name and picking it from
+autocomplete adds one species; a chip's `×` removes one.
