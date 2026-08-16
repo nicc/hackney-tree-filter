@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Hackney Tree Filter</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  /* ---- Herbarium palette: pressed-leaf greens, aged paper, chestnut bark ---- */
+  :root{
+    --ink:#1c2b24;          /* deep spruce, text */
+    --ink-soft:#43554c;
+    --paper:#f1efe6;        /* aged paper, panels */
+    --paper-2:#e7e4d7;      /* recessed paper */
+    --moss:#3e6b4a;         /* living leaf, primary accent */
+    --moss-deep:#2c4e37;
+    --bark:#7a5233;         /* chestnut, hairlines & secondary */
+    --sage:#a7b79a;         /* muted lichen */
+    --line:#d3cfbe;         /* hairline on paper */
+    --danger:#8a3b2e;       /* terracotta-brick, for "clear" */
+    --shadow:0 1px 2px rgba(28,43,36,.10),0 8px 24px rgba(28,43,36,.10);
+    --panel-w:340px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:Inter,system-ui,sans-serif;
+    color:var(--ink);
+    background:var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  /* Latin binomials are set in italic serif — the field-guide convention. */
+  .sci{font-family:Fraunces,Georgia,serif;font-style:italic;font-weight:500;letter-spacing:.1px}
+
+  #app{display:flex;height:100dvh;overflow:hidden}
+
+  /* ---------- Control panel ---------- */
+  #panel{
+    width:var(--panel-w);flex:0 0 var(--panel-w);
+    display:flex;flex-direction:column;
+    background:var(--paper);
+    border-right:1px solid var(--line);
+    z-index:1000;
+  }
+  header.brand{padding:20px 22px 16px}
+  .eyebrow{
+    font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--bark);font-weight:600;margin:0 0 6px
+  }
+  h1{
+    font-family:Fraunces,Georgia,serif;font-weight:600;font-size:27px;line-height:1.05;
+    margin:0;letter-spacing:-.01em
+  }
+  .leaf-rule{height:2px;margin:14px 0 0;
+    background:linear-gradient(90deg,var(--moss) 0 38px,var(--line) 38px)}
+  .readout{padding:12px 22px;border-bottom:1px solid var(--line);
+    display:flex;gap:18px;align-items:baseline}
+  .readout .big{font-family:Fraunces,serif;font-size:22px;font-weight:600;line-height:1}
+  .readout .lbl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+
+  .controls{padding:16px 22px;display:flex;flex-direction:column;gap:12px;min-height:0;flex:1}
+
+  label.field-label{font-size:12px;font-weight:600;color:var(--ink-soft);
+    letter-spacing:.02em;display:block;margin-bottom:6px}
+
+  /* Search + autocomplete */
+  .search-wrap{position:relative}
+  #search{
+    width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+    background:#fff;color:var(--ink);font-size:15px;font-family:inherit
+  }
+  #search::placeholder{color:#9a9683;font-style:normal}
+  #search:focus{outline:none;border-color:var(--moss);box-shadow:0 0 0 3px rgba(62,107,74,.15)}
+  .ac{
+    position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:1200;
+    background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);
+    max-height:280px;overflow:auto;padding:4px;display:none
+  }
+  .ac.open{display:block}
+  .ac-item{padding:8px 10px;border-radius:6px;cursor:pointer;display:flex;
+    justify-content:space-between;gap:10px;align-items:center}
+  .ac-item .dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
+  .ac-item .n{flex:1;font-size:14px}
+  .ac-item .c{font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .ac-item.active,.ac-item:hover{background:var(--paper-2)}
+  .ac-empty{padding:10px;color:var(--ink-soft);font-size:13px}
+  .ac-common{color:var(--ink-soft);font-style:normal;font-family:Inter,sans-serif;font-size:12px}
+
+  /* Bulk buttons */
+  .bulk{display:flex;gap:8px}
+  button.btn{
+    flex:1;padding:9px 10px;border-radius:8px;border:1px solid var(--line);
+    background:#fff;color:var(--ink);font:inherit;font-size:13px;font-weight:600;cursor:pointer;
+    transition:background .12s,border-color .12s}
+  button.btn:hover{background:var(--paper-2)}
+  button.btn:focus-visible{outline:2px solid var(--moss);outline-offset:2px}
+  button.btn.primary{border-color:var(--moss);color:var(--moss-deep)}
+  button.btn.primary:hover{background:rgba(62,107,74,.10)}
+  button.btn.ghost:hover{background:rgba(138,59,46,.08);border-color:var(--danger);color:var(--danger)}
+
+  /* Selected-species chips */
+  .chips-head{display:flex;justify-content:space-between;align-items:baseline;margin-top:2px}
+  .chips-head .count{font-size:12px;color:var(--ink-soft)}
+  .chips{
+    flex:1;min-height:0;overflow:auto;margin-top:4px;padding:2px;
+    display:flex;flex-wrap:wrap;gap:7px;align-content:flex-start
+  }
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;max-width:100%;
+    padding:5px 6px 5px 9px;border:1px solid var(--line);border-radius:999px;
+    background:#fff;font-size:13px;line-height:1.2
+  }
+  .chip .dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
+  .chip .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chip .x{border:none;background:var(--paper-2);color:var(--ink-soft);cursor:pointer;
+    width:18px;height:18px;border-radius:50%;font-size:13px;line-height:1;padding:0;flex:0 0 18px}
+  .chip .x:hover{background:var(--danger);color:#fff}
+  .empty-note{color:var(--ink-soft);font-size:13px;line-height:1.5;padding:6px 2px}
+  .empty-note b{color:var(--ink)}
+
+  /* Status banner (data source) */
+  .status{margin:0 22px 16px;padding:9px 11px;border-radius:8px;font-size:12px;line-height:1.45;
+    border:1px solid var(--line);background:var(--paper-2);color:var(--ink-soft)}
+  .status.live{border-color:var(--moss);background:rgba(62,107,74,.09);color:var(--moss-deep)}
+  .status.sample{border-color:var(--bark);background:rgba(122,82,51,.08);color:#5c3e26}
+  .status b{font-weight:600}
+  .status a{color:inherit}
+
+  /* ---------- Map ---------- */
+  #map{flex:1;background:#dfe4dd}
+  .leaflet-container{font-family:Inter,sans-serif}
+  .leaflet-popup-content{margin:12px 14px}
+  .pop-sci{font-family:Fraunces,serif;font-style:italic;font-weight:500;font-size:15px;margin:0 0 3px}
+  .pop-common{font-size:13px;color:var(--ink-soft);margin:0 0 6px}
+  .pop-meta{font-size:12px;color:var(--ink);margin:1px 0}
+  .pop-meta span{color:var(--ink-soft)}
+
+  /* Mobile: stack panel above a shorter map */
+  #panel-toggle{display:none}
+  @media (max-width:760px){
+    :root{--panel-w:100%}
+    #app{flex-direction:column}
+    #panel{flex:0 0 auto;max-height:56dvh;border-right:none;border-bottom:1px solid var(--line)}
+    #map{min-height:44dvh}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <header class="brand">
+      <p class="eyebrow">London Borough of Hackney · Street trees</p>
+      <h1>Hackney Tree Filter</h1>
+      <div class="leaf-rule"></div>
+    </header>
+
+    <div class="readout">
+      <div><div class="big" id="shownCount">0</div><div class="lbl">trees shown</div></div>
+      <div><div class="big" id="speciesCount">0</div><div class="lbl">species on</div></div>
+    </div>
+
+    <div class="controls">
+      <div>
+        <label class="field-label" for="search">Filter by species (binomial name)</label>
+        <div class="search-wrap">
+          <input id="search" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Type a name — e.g. Platanus, Tilia, Quercus…"
+                 aria-label="Search species by binomial name" role="combobox"
+                 aria-expanded="false" aria-controls="ac" />
+          <div id="ac" class="ac" role="listbox"></div>
+        </div>
+      </div>
+
+      <div class="bulk">
+        <button class="btn primary" id="addAll" type="button">Select all species</button>
+        <button class="btn ghost" id="removeAll" type="button">Clear all</button>
+      </div>
+
+      <div class="chips-head">
+        <span class="field-label" style="margin:0">Showing</span>
+        <span class="count" id="chipsCount"></span>
+      </div>
+      <div class="chips" id="chips" aria-live="polite"></div>
+    </div>
+
+    <div class="status" id="status">Loading Hackney tree data…</div>
+  </aside>
+
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+/* ============================================================================
+   Hackney Tree Filter — a local, self-contained view of the Hackney Tree Map
+   with a species (binomial) filter.
+
+   DATA SOURCE
+   -----------
+   Hackney serves its tree data from a public GeoServer WFS as GeoJSON:
+     https://map2.hackney.gov.uk/geoserver/ows
+   The official map (map2.hackney.gov.uk/maps/trees) reads the same endpoint
+   from the *same origin*, so it never needs CORS. When you open THIS file from
+   your disk (file://) or another origin, the browser applies cross-origin rules
+   — if Hackney's GeoServer doesn't send an Access-Control-Allow-Origin header,
+   the live fetch is blocked and we fall back to a bundled set of real Hackney
+   trees so the tool still works. See the status banner, and the README notes.
+
+   The real street/park-tree layer is `greenspaces:tree` (confirmed via
+   GetCapabilities on the WFS — ~39,000 features, with `species`, `common_name`,
+   `age` and `sitename` properties). The tree-preservation-order layer is kept
+   as a fallback in case the main layer is ever renamed.
+   ========================================================================== */
+
+const CONFIG = {
+  geoserver: 'https://map2.hackney.gov.uk/geoserver/ows',
+  // Tried in order; first non-empty response wins.
+  layers: [
+    'greenspaces:tree',                        // confirmed: ~39k street/park trees
+    'planning:tree_preservation_order_point'   // confirmed-working fallback
+  ],
+  // Field auto-detection: first property that exists (case-insensitive) is used.
+  binomialFields: ['species_name','botanical_name','scientific_name','latin_name',
+                   'binomial','species','tree_species','spp'],
+  commonFields:   ['common_name','commonname','common_nam','common','vernacular'],
+  ageFields:      ['age','maturity','age_class','life_stage','maturity_class'],
+  addressFields:  ['full_address','address','street','location','site_name',
+                   'sitename','treelocn','addnlocn'],
+  maxFeatures: 60000,
+  center: [51.5490, -0.0570],
+  zoom: 13
+};
+
+/* ---- Bundled fallback: real Hackney trees (binomial + coords), so the filter
+   works out of the box even when the live fetch is blocked. ---- */
+const SAMPLE = [
+  ["Platanus x acerifolia","London plane",-0.0388066,51.5405357],
+  ["Platanus x acerifolia","London plane",-0.0386611,51.5406524],
+  ["Platanus x acerifolia","London plane",-0.0503694,51.5485787],
+  ["Platanus x hispanica","London plane",-0.0581570,51.5588098],
+  ["Platanus x hispanica","London plane",-0.0834642,51.5307387],
+  ["Platanus x hispanica","London plane",-0.0846849,51.5303516],
+  ["Robinia pseudoacacia","False acacia",-0.0506961,51.5393421],
+  ["Robinia pseudoacacia","False acacia",-0.0642585,51.5470297],
+  ["Robinia pseudoacacia","False acacia",-0.0834913,51.5583404],
+  ["Robinia pseudoacacia","False acacia",-0.0409839,51.5387655],
+  ["Acer pseudoplatanus","Sycamore",-0.0719865,51.5515941],
+  ["Acer pseudoplatanus","Sycamore",-0.0687384,51.5748615],
+  ["Acer pseudoplatanus","Sycamore",-0.0632798,51.5415702],
+  ["Tilia vulgaris","Common lime",-0.0796598,51.5670658],
+  ["Tilia vulgaris","Common lime",-0.0797606,51.5670484],
+  ["Tilia vulgaris","Common lime",-0.0793222,51.5671205],
+  ["Tilia vulgaris","Common lime",-0.0811314,51.5743247],
+  ["Fraxinus excelsior","Common ash",-0.0861764,51.5669763],
+  ["Fraxinus excelsior","Common ash",-0.0859140,51.5642401],
+  ["Quercus robur","English oak",-0.0864296,51.5669646],
+  ["Quercus robur","English oak",-0.0702275,51.5562316],
+  ["Aesculus hippocastanum","Horse chestnut",-0.0686984,51.5747750],
+  ["Aesculus hippocastanum","Horse chestnut",-0.0692755,51.5724672],
+  ["Aesculus hippocastanum","Horse chestnut",-0.0702653,51.5726110],
+  ["Aesculus hippocastanum","Horse chestnut",-0.0925826,51.5658083],
+  ["Betula pendula","Silver birch",-0.0703160,51.5563377],
+  ["Betula ermanii","Erman's birch",-0.0475803,51.5485732],
+  ["Betula ermanii","Erman's birch",-0.0475665,51.5485556],
+  ["Betula maximowicziana","Monarch birch",-0.0476099,51.5485592],
+  ["Ailanthus altissima","Tree of heaven",-0.0801562,51.5629970],
+  ["Ailanthus altissima","Tree of heaven",-0.0620302,51.5595234],
+  ["Catalpa bignonioides","Indian bean tree",-0.0843201,51.5283716],
+  ["Taxodium distichum","Swamp cypress",-0.0860392,51.5668284],
+  ["Cedrus atlantica","Atlas cedar",-0.0621424,51.5437648],
+  ["Juglans regia","Common walnut",-0.0702633,51.5563481],
+  ["Sorbus aucuparia","Rowan",-0.0809257,51.5295488],
+  ["Sorbus aucuparia","Rowan",-0.0807431,51.5295221],
+  ["Fagus sylvatica","Beech",-0.0654160,51.5338206],
+  ["Fagus sylvatica","Beech",-0.0915265,51.5732305]
+].map(([sci,common,lng,lat]) => ({sci, common, age:null, addr:null, lng, lat}));
+
+/* ============================ Map ============================ */
+const map = L.map('map', {preferCanvas:true, zoomControl:true}).setView(CONFIG.center, CONFIG.zoom);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Tree data &copy; London Borough of Hackney',
+  subdomains:'abcd', maxZoom:19
+}).addTo(map);
+const canvasRenderer = L.canvas({padding:0.5});
+
+/* ============================ State ============================ */
+let TREES = [];                 // {sci, common, age, addr, lng, lat}
+let SPECIES = [];               // [{sci, common, count}]  distinct, sorted
+const selected = new Set();     // active binomial whitelist
+const colorCache = new Map();
+
+/* Deterministic colour per species — stable hue from the name. */
+function colorFor(sci){
+  if(colorCache.has(sci)) return colorCache.get(sci);
+  let h=0; for(let i=0;i<sci.length;i++) h=(h*31+sci.charCodeAt(i))>>>0;
+  const c = `hsl(${h%360} 52% 42%)`;
+  colorCache.set(sci,c); return c;
+}
+
+/* ============================ Data loading ============================ */
+function pick(props, candidates){
+  const keys = Object.keys(props);
+  for(const cand of candidates){
+    const k = keys.find(k => k.toLowerCase() === cand);
+    if(k && props[k]!=null && String(props[k]).trim()!=='') return String(props[k]).trim();
+  }
+  return null;
+}
+
+async function tryLayer(layer){
+  const u = new URL(CONFIG.geoserver);
+  u.search = new URLSearchParams({
+    service:'WFS', version:'2.0.0', request:'GetFeature',
+    typeNames:layer, outputFormat:'application/json',
+    srsName:'EPSG:4326', count:String(CONFIG.maxFeatures)
+  }).toString();
+  const res = await fetch(u, {headers:{'Accept':'application/json'}});
+  if(!res.ok) throw new Error(layer+' → HTTP '+res.status);
+  const gj = await res.json();
+  if(!gj.features || !gj.features.length) throw new Error(layer+' → 0 features');
+  return {layer, gj};
+}
+
+function ingest(gj){
+  const out = [];
+  for(const f of gj.features){
+    const g = f.geometry; if(!g) continue;
+    let lng, lat;
+    if(g.type==='Point'){ [lng,lat]=g.coordinates; }
+    else if(g.type==='MultiPoint' && g.coordinates.length){ [lng,lat]=g.coordinates[0]; }
+    else continue;
+    const p = f.properties || {};
+    const sci = pick(p, CONFIG.binomialFields);
+    if(!sci) continue;
+    out.push({
+      sci,
+      common: pick(p, CONFIG.commonFields),
+      age:    pick(p, CONFIG.ageFields),
+      addr:   pick(p, CONFIG.addressFields),
+      lng, lat
+    });
+  }
+  return out;
+}
+
+async function loadData(){
+  for(const layer of CONFIG.layers){
+    try{
+      const {layer:used, gj} = await tryLayer(layer);
+      const trees = ingest(gj);
+      if(trees.length){
+        setStatus('live', `<b>Live data.</b> ${trees.length.toLocaleString()} trees from Hackney’s GeoServer (<span class="sci" style="font-style:normal">${used}</span>).`);
+        return trees;
+      }
+    }catch(e){ /* try the next candidate */ }
+  }
+  // Nothing reachable — almost always a cross-origin block when run from disk.
+  setStatus('sample',
+    `<b>Showing bundled sample.</b> Couldn’t reach Hackney’s live data — expected when this file is opened directly from disk (the browser blocks the cross-origin request). ` +
+    `To pull all ~45,000 live trees, serve it through a small proxy — see the README.`);
+  return SAMPLE.slice();
+}
+
+/* ============================ Species index ============================ */
+function buildSpecies(){
+  const m = new Map();
+  for(const t of TREES){
+    const e = m.get(t.sci) || {sci:t.sci, common:t.common, count:0};
+    e.count++; if(!e.common && t.common) e.common=t.common;
+    m.set(t.sci, e);
+  }
+  SPECIES = [...m.values()].sort((a,b)=>a.sci.localeCompare(b.sci));
+}
+
+/* ============================ Rendering ============================ */
+let layerGroup = L.layerGroup().addTo(map);
+
+function render(){
+  layerGroup.clearLayers();
+  let shown = 0;
+  for(const t of TREES){
+    if(!selected.has(t.sci)) continue;
+    shown++;
+    const m = L.circleMarker([t.lat, t.lng], {
+      renderer:canvasRenderer, radius:5, weight:1,
+      color:'#ffffff', fillColor:colorFor(t.sci), fillOpacity:.9, opacity:.9
+    });
+    m.bindPopup(popupHTML(t));
+    layerGroup.addLayer(m);
+  }
+  document.getElementById('shownCount').textContent  = shown.toLocaleString();
+  document.getElementById('speciesCount').textContent = selected.size.toLocaleString();
+}
+
+function popupHTML(t){
+  const esc = s => String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  let h = `<div class="pop-sci">${esc(t.sci)}</div>`;
+  if(t.common) h += `<div class="pop-common">${esc(t.common)}</div>`;
+  if(t.age)    h += `<div class="pop-meta"><span>Maturity</span> · ${esc(t.age)}</div>`;
+  if(t.addr)   h += `<div class="pop-meta"><span>Location</span> · ${esc(t.addr)}</div>`;
+  return h;
+}
+
+/* ============================ Chips ============================ */
+function renderChips(){
+  const box = document.getElementById('chips');
+  const countEl = document.getElementById('chipsCount');
+  box.innerHTML = '';
+
+  if(selected.size === 0){
+    box.innerHTML = `<div class="empty-note">No species selected — the map is empty.<br>
+      Search above to add one, or <b>Select all species</b> to show everything.</div>`;
+    countEl.textContent = `0 of ${SPECIES.length}`;
+    return;
+  }
+  countEl.textContent = `${selected.size} of ${SPECIES.length}`;
+
+  // Keep chips in the same sorted order as the species index.
+  for(const s of SPECIES){
+    if(!selected.has(s.sci)) continue;
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML =
+      `<span class="dot" style="background:${colorFor(s.sci)}"></span>` +
+      `<span class="txt sci">${escapeHTML(s.sci)}</span>` +
+      `<button class="x" title="Remove ${escapeHTML(s.sci)}" aria-label="Remove ${escapeHTML(s.sci)}">×</button>`;
+    chip.querySelector('.x').addEventListener('click', ()=>{ selected.delete(s.sci); update(); });
+    box.appendChild(chip);
+  }
+}
+function escapeHTML(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+/* ============================ Autocomplete ============================ */
+const search = document.getElementById('search');
+const ac = document.getElementById('ac');
+let acItems = [], acIndex = -1;
+
+function openAC(list){
+  acItems = list; acIndex = -1;
+  if(!list.length){
+    ac.innerHTML = `<div class="ac-empty">No matching species</div>`;
+    ac.classList.add('open'); search.setAttribute('aria-expanded','true'); return;
+  }
+  ac.innerHTML = list.map((s,i)=>{
+    const disabled = selected.has(s.sci);
+    return `<div class="ac-item${disabled?' active':''}" data-i="${i}" role="option">
+      <span class="dot" style="background:${colorFor(s.sci)}"></span>
+      <span class="n"><span class="sci">${escapeHTML(s.sci)}</span>${s.common?` <span class="ac-common">${escapeHTML(s.common)}</span>`:''}</span>
+      <span class="c">${disabled?'✓':s.count.toLocaleString()}</span>
+    </div>`;
+  }).join('');
+  ac.querySelectorAll('.ac-item').forEach(el=>{
+    el.addEventListener('mousedown', e=>{ e.preventDefault(); choose(acItems[+el.dataset.i]); });
+  });
+  ac.classList.add('open'); search.setAttribute('aria-expanded','true');
+}
+function closeAC(){ ac.classList.remove('open'); search.setAttribute('aria-expanded','false'); acIndex=-1; }
+
+function queryMatches(q){
+  q = q.trim().toLowerCase();
+  const pool = SPECIES;
+  if(!q) return pool.slice(0,12);
+  const starts=[], contains=[];
+  for(const s of pool){
+    const hay = (s.sci+' '+(s.common||'')).toLowerCase();
+    if(s.sci.toLowerCase().startsWith(q)) starts.push(s);
+    else if(hay.includes(q)) contains.push(s);
+  }
+  return starts.concat(contains).slice(0,12);
+}
+function choose(s){
+  if(!s) return;
+  selected.add(s.sci);
+  search.value=''; closeAC(); update(); search.focus();
+}
+
+search.addEventListener('input', ()=> openAC(queryMatches(search.value)));
+search.addEventListener('focus', ()=> openAC(queryMatches(search.value)));
+search.addEventListener('keydown', e=>{
+  if(!ac.classList.contains('open')) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); acIndex=Math.min(acIndex+1,acItems.length-1); paintAC(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); acIndex=Math.max(acIndex-1,0); paintAC(); }
+  else if(e.key==='Enter'){ e.preventDefault(); choose(acItems[acIndex>=0?acIndex:0]); }
+  else if(e.key==='Escape'){ closeAC(); }
+});
+function paintAC(){
+  ac.querySelectorAll('.ac-item').forEach((el,i)=>{
+    const on = i===acIndex; el.classList.toggle('active', on || selected.has(acItems[i].sci));
+    if(on) el.scrollIntoView({block:'nearest'});
+  });
+}
+document.addEventListener('click', e=>{ if(!e.target.closest('.search-wrap')) closeAC(); });
+
+/* ============================ Bulk controls ============================ */
+document.getElementById('addAll').addEventListener('click', ()=>{
+  SPECIES.forEach(s=>selected.add(s.sci)); update();
+});
+document.getElementById('removeAll').addEventListener('click', ()=>{
+  selected.clear(); update();
+});
+
+/* ============================ Glue ============================ */
+function update(){ renderChips(); render(); }
+function setStatus(kind,html){
+  const el = document.getElementById('status');
+  el.className = 'status '+kind; el.innerHTML = html;
+}
+
+(async function init(){
+  TREES = await loadData();
+  buildSpecies();
+  SPECIES.forEach(s=>selected.add(s.sci));   // start with everything shown
+  update();
+})();
+</script>
+</body>
+</html>
