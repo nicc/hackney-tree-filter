@@ -196,6 +196,24 @@
       font:600 16px/1 Fraunces,Georgia,serif;cursor:pointer;z-index:1300;
     }
     #infoToggle:focus-visible{outline:2px solid var(--moss);outline-offset:2px}
+    /* Small dot on the toggle: pulses while data is still loading, settles to
+       a solid colour (matching the status banner's own colour language) once
+       it resolves — a glance is enough, tapping through gives the detail. */
+    #infoToggle::after{
+      content:'';position:absolute;top:-2px;right:-2px;
+      width:10px;height:10px;border-radius:50%;
+      background:var(--sage);border:1.5px solid var(--paper);
+      opacity:0;transition:background-color .2s ease;
+    }
+    #infoToggle.loading::after{
+      opacity:1;background:var(--sage);animation:infoPulse 1.4s ease-in-out infinite;
+    }
+    #infoToggle.status-live::after{opacity:1;background:var(--moss)}
+    #infoToggle.status-sample::after{opacity:1;background:var(--bark)}
+    @keyframes infoPulse{
+      0%,100%{transform:scale(1);opacity:.9}
+      50%{transform:scale(1.35);opacity:.4}
+    }
 
     .readout,.status{display:none}
 
@@ -229,7 +247,10 @@
     .controls{flex:none;min-height:0}
     .chips{flex:none;max-height:140px}
   }
-  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none!important}
+    #infoToggle.loading::after{animation:none}
+  }
 </style>
 </head>
 <body>
@@ -243,7 +264,7 @@
 
     <!-- Mobile only: readout + status move into a toggleable overlay (see #infoToggle below) -->
     <button id="infoToggle" type="button" aria-expanded="false" aria-controls="readout status"
-            aria-label="Show tree data status">ⓘ</button>
+            aria-label="Tree data status — loading">ⓘ</button>
     <div id="infoBackdrop"></div>
 
     <div class="readout" id="readout">
@@ -652,6 +673,7 @@ if(window.matchMedia('(max-width:760px)').matches){
 
 /* ============================ Info overlay (mobile) ============================ */
 const infoToggle = document.getElementById('infoToggle');
+infoToggle.classList.add('loading');   // cleared by setStatus() once data resolves
 function setInfoOpen(open){
   document.body.classList.toggle('info-open', open);
   infoToggle.setAttribute('aria-expanded', String(open));
@@ -665,6 +687,14 @@ function update(){ renderChips(); render(); }
 function setStatus(kind,html){
   const el = document.getElementById('status');
   el.className = 'status '+kind; el.innerHTML = html;
+  // Reflect resolution on the mobile info toggle too, so a slow fetch reads as
+  // "still loading" rather than "broken" even before you tap through to it.
+  infoToggle.classList.remove('loading');
+  infoToggle.classList.remove('status-live','status-sample');
+  infoToggle.classList.add('status-'+kind);
+  infoToggle.setAttribute('aria-label', kind==='sample'
+    ? 'Tree data status — showing bundled sample, tap for details'
+    : 'Tree data status — loaded, tap for details');
 }
 
 (async function init(){

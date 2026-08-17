@@ -1,0 +1,16 @@
+# Compress text responses — trees.json is the big one (~3.5MB uncompressed,
+# ~400KB gzipped) and is the main driver of load time on a slow mobile
+# connection, where it can otherwise take tens of seconds.
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE application/json
+  AddOutputFilterByType DEFLATE text/html
+  AddOutputFilterByType DEFLATE text/css
+  AddOutputFilterByType DEFLATE text/javascript application/javascript
+</IfModule>
+
+# Tell any cache in front of this (browser or CDN) that the response varies
+# by Accept-Encoding, so a compressed response never gets served to a client
+# that didn't ask for it, or vice versa.
+<IfModule mod_headers.c>
+  Header append Vary Accept-Encoding
+</IfModule>

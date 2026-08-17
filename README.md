@@ -30,11 +30,15 @@ python3 build.py
 ```
 
 Fetches the current tree data once (a couple of seconds — see field trimming
-below) and writes a self-contained `dist/` folder (`index.html` + `trees.json`).
-Upload `dist/` as-is to any static host — GitHub Pages, Netlify, S3, etc. The
-app loads `trees.json` directly, so no proxy is needed there. Tree data doesn't
-change often, so re-run `build.py` occasionally (the status banner in the app
-shows the snapshot's build date) rather than on every deploy.
+below) and writes a self-contained `dist/` folder (`index.html` + `trees.json`
++ `.htaccess`). Upload the **whole** `dist/` folder as-is — including
+`.htaccess`, which most file managers/FTP clients hide by default since it's a
+dotfile, so double-check it actually made it up. On Apache (Hetzner and most
+shared hosts) it gzips `trees.json` in transit, ~3.5MB → ~600KB — the single
+biggest factor in load time on a mobile connection. Harmless no-op on a host
+that isn't Apache. Tree data doesn't change often, so re-run `build.py`
+occasionally (the status banner shows the snapshot's build date) rather than
+on every deploy.
 
 You can also just open `index.html` directly from disk, but the live fetch will
 almost always be blocked by CORS (see below) and you'll get the small bundled
