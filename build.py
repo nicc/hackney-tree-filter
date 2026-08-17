@@ -78,7 +78,7 @@ def fetch_layer(layer):
     # Hackney's GeoServer honors Accept-Encoding but urllib won't send it (or
     # decode the response) on its own — asking cuts the fetch substantially.
     req = urllib.request.Request(f"{UPSTREAM}?{query}", headers={
-        "User-Agent": "hackney-tree-filter/1.0",
+        "User-Agent": "hackney-tree-map/1.0",
         "Accept-Encoding": "gzip",
     })
     with urllib.request.urlopen(req, timeout=60) as r:

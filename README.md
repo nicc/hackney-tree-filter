@@ -29,12 +29,12 @@ your browser automatically. Stdlib only — no dependencies. Stop with `Ctrl+C`.
 python3 build.py
 ```
 
-Fetches the current tree data once and writes a self-contained `dist/` folder
-(`index.html` + `trees.json`). Upload `dist/` as-is to any static host — GitHub
-Pages, Netlify, S3, etc. The app loads `trees.json` directly, so no proxy is
-needed there. Tree data doesn't change often, so re-run `build.py` occasionally
-(the status banner in the app shows the snapshot's build date) rather than on
-every deploy.
+Fetches the current tree data once (a couple of seconds — see field trimming
+below) and writes a self-contained `dist/` folder (`index.html` + `trees.json`).
+Upload `dist/` as-is to any static host — GitHub Pages, Netlify, S3, etc. The
+app loads `trees.json` directly, so no proxy is needed there. Tree data doesn't
+change often, so re-run `build.py` occasionally (the status banner in the app
+shows the snapshot's build date) rather than on every deploy.
 
 You can also just open `index.html` directly from disk, but the live fetch will
 almost always be blocked by CORS (see below) and you'll get the small bundled
@@ -49,12 +49,26 @@ https://map2.hackney.gov.uk/geoserver/ows
 ```
 
 The real dataset is the **`greenspaces:tree`** layer — confirmed via the WFS's
-`GetCapabilities` listing, currently around **38,800 features**. Each feature carries
+`GetCapabilities` listing, currently around **38,500 features**. Each feature carries
 a `species` (binomial), `common_name`, `age`, and location fields (`sitename`,
 `treelocn`, `addnlocn`). `CONFIG.layers` in `index.html` tries this layer first, then
-falls back to `planning:tree_preservation_order_point` (~630 TPO trees) if it's ever
+falls back to `planning:tree_preservation_order_point` (~625 TPO trees) if it's ever
 renamed. The app auto-detects which field names are present on whatever layer
 responds, so it isn't hardcoded to one schema.
+
+Each layer actually carries ~35-40 properties per tree, including large free-text
+inspection notes the app never reads — fetching all of them makes the raw response
+~46MB. Both `run.py`'s proxy and `build.py` instead:
+
+- request only the handful of fields the app uses, via the WFS `propertyName`
+  parameter (pre-verified per layer, since GeoServer rejects the whole request
+  if any requested field doesn't exist on that layer) — 46MB → ~11.6MB, and
+- ask for gzip and decompress it themselves, since `urllib` won't negotiate
+  compression on its own the way a browser does — ~11.6MB → ~1.4MB on the wire.
+
+Together that took a live load from ~12-17s down to ~2s. A layer added to
+`CONFIG.layers`/`LAYERS` without a known field list just skips the trim and
+fetches everything, so this degrades gracefully rather than breaking.
 
 The official Hackney map reads this same endpoint from the same origin, so it never
 needs CORS. Opening `index.html` straight from disk (`file://`) is a *different*

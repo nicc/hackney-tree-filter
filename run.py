@@ -4,10 +4,9 @@ Run the Hackney Tree Map locally with live data.
 
     python3 run.py
 
-Serves hackney-tree-filter.html and proxies Hackney's GeoServer WFS from the
-*same origin*, so the browser never applies cross-origin rules — no CORS, no
-editing the HTML. Put this file next to hackney-tree-filter.html and run it.
-Stop with Ctrl+C.
+Serves index.html and proxies Hackney's GeoServer WFS from the *same origin*,
+so the browser never applies cross-origin rules — no CORS, no editing the
+HTML. Put this file next to index.html and run it. Stop with Ctrl+C.
 
 Standard library only.
 """
@@ -75,7 +74,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # decode the response) on its own — asking cuts a ~46MB tree response to
         # ~4MB on the wire. Decompress here so the browser gets plain JSON either way.
         req = urllib.request.Request(url, headers={
-            "User-Agent": "hackney-tree-filter/1.0",
+            "User-Agent": "hackney-tree-map/1.0",
             "Accept-Encoding": "gzip",
         })
         try:
