@@ -251,7 +251,7 @@
       <div><div class="big" id="speciesCount">0</div><div class="lbl">species</div></div>
     </div>
 
-    <div class="controls chips-collapsed">
+    <div class="controls">
       <div>
         <label class="field-label" for="search">Filter by species (binomial name)</label>
         <div class="search-wrap">
@@ -268,7 +268,7 @@
         <button class="btn ghost" id="removeAll" type="button">Clear all</button>
       </div>
 
-      <button class="chips-head" id="chipsToggle" type="button" aria-expanded="false" aria-controls="chips">
+      <button class="chips-head" id="chipsToggle" type="button" aria-expanded="true" aria-controls="chips">
         <span class="field-label" style="margin:0">Showing</span>
         <span class="chips-head-right">
           <span class="count" id="chipsCount"></span>
@@ -641,6 +641,14 @@ chipsToggle.addEventListener('click', ()=>{
   const collapsed = controlsEl.classList.toggle('chips-collapsed');
   chipsToggle.setAttribute('aria-expanded', String(!collapsed));
 });
+// Open by default on web; collapsed by default on mobile (same breakpoint as
+// the layout media query), so the map is what you see first on a small
+// screen. Checked once at load, not on resize, so it never fights a
+// deliberate tap mid-session.
+if(window.matchMedia('(max-width:760px)').matches){
+  controlsEl.classList.add('chips-collapsed');
+  chipsToggle.setAttribute('aria-expanded', 'false');
+}
 
 /* ============================ Info overlay (mobile) ============================ */
 const infoToggle = document.getElementById('infoToggle');
