@@ -510,7 +510,7 @@ async function loadData(){
     const when = manifest.builtAt
       ? new Date(manifest.builtAt).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})
       : 'an unknown date';
-    setStatus('live', `<b>Bundled snapshot.</b> ${trees.length.toLocaleString()} trees from Hackney’s GeoServer (<span class="sci" style="font-style:normal">${manifest.layer||'cached layer'}</span>), captured ${when}. Run <code>python3 build.py</code> to refresh it.`);
+    setStatus('live', `<b>Bundled snapshot.</b> ${trees.length.toLocaleString()} trees from Hackney’s GeoServer (<span class="sci" style="font-style:normal">${manifest.layer||'cached layer'}</span>), ${when}.`);
     return trees;
   }catch(e){ /* no bundled cache — fall through to a live fetch */ }
 
