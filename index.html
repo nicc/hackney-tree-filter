@@ -352,7 +352,27 @@ function ingest(gj){
   return out;
 }
 
+/* A build.py bundle ships a trees.json next to this file with pre-fetched
+   data, so a fully static deploy needs no WFS call (and no proxy) at all. */
+async function tryCache(){
+  const res = await fetch('trees.json', {cache:'no-store'});
+  if(!res.ok) throw new Error('no bundled cache');
+  const manifest = await res.json();
+  const trees = (manifest.trees||[]).map(([sci,common,age,addr,lng,lat]) => ({sci,common,age,addr,lng,lat}));
+  if(!trees.length) throw new Error('empty bundled cache');
+  return {trees, manifest};
+}
+
 async function loadData(){
+  try{
+    const {trees, manifest} = await tryCache();
+    const when = manifest.builtAt
+      ? new Date(manifest.builtAt).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})
+      : 'an unknown date';
+    setStatus('live', `<b>Bundled snapshot.</b> ${trees.length.toLocaleString()} trees from Hackney’s GeoServer (<span class="sci" style="font-style:normal">${manifest.layer||'cached layer'}</span>), captured ${when}. Run <code>python3 build.py</code> to refresh it.`);
+    return trees;
+  }catch(e){ /* no bundled cache — fall through to a live fetch */ }
+
   for(const layer of CONFIG.layers){
     try{
       const {layer:used, gj} = await tryLayer(layer);
@@ -366,7 +386,7 @@ async function loadData(){
   // Nothing reachable — almost always a cross-origin block when run from disk.
   setStatus('sample',
     `<b>Showing bundled sample.</b> Couldn’t reach Hackney’s live data — expected when this file is opened directly from disk (the browser blocks the cross-origin request). ` +
-    `To pull all ~45,000 live trees, serve it through a small proxy — see the README.`);
+    `Run <code>python3 run.py</code> for live data via the local proxy, or <code>python3 build.py</code> for an uploadable static snapshot — see the README.`);
   return SAMPLE.slice();
 }
 
