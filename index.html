@@ -81,7 +81,15 @@
   #search::placeholder{color:#9a9683;font-style:normal}
   #search:focus{outline:none;border-color:var(--moss);box-shadow:0 0 0 3px rgba(62,107,74,.15)}
   .ac{
-    position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:1200;
+    /* position:fixed (not absolute) and top/left/width set from JS (see
+       positionAC()) rather than anchored via .search-wrap: #panel clips
+       overflow (overflow-y:auto) and, on mobile, is only as tall as its
+       content — if the "Showing" chips are folded away, #panel's box
+       shrinks and an absolutely-positioned dropdown would get clipped to
+       that shrunken box instead of using the screen space it frees up.
+       Fixed positioning escapes that; max-height is likewise computed
+       against actual remaining viewport space instead of a flat number. */
+    position:fixed;z-index:1200;
     background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);
     max-height:280px;overflow:auto;padding:4px;display:none
   }
@@ -308,7 +316,6 @@
                  placeholder="Type a name — e.g. Platanus, Tilia, Quercus…"
                  aria-label="Search species by binomial name" role="combobox"
                  aria-expanded="false" aria-controls="ac" />
-          <div id="ac" class="ac" role="listbox"></div>
         </div>
       </div>
 
@@ -331,7 +338,11 @@
   <!-- Siblings of #panel, not children of it: #panel can slide via `transform` when
        folded, and a `transform` on an ancestor would otherwise hijack these
        fixed-position elements (redefining their containing block), pulling them
-       along with it. Keeping them out of #panel is what lets them stay put. -->
+       along with it. Keeping them out of #panel is what lets them stay put. Also
+       true of #ac (below): nested under #panel it'd inherit #panel's own
+       overflow-clipping and content-driven height, which is the bug it exists
+       to avoid — see the comment on .ac in <style>. -->
+  <div id="ac" class="ac" role="listbox"></div>
   <button id="infoToggle" type="button" aria-expanded="false" aria-controls="readout status"
           aria-label="Tree data status — loading">ⓘ</button>
   <div id="infoBackdrop"></div>
@@ -666,6 +677,7 @@ function escapeHTML(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'
 
 /* ============================ Autocomplete ============================ */
 const search = document.getElementById('search');
+const searchWrap = document.querySelector('.search-wrap');
 const ac = document.getElementById('ac');
 let acItems = [], acIndex = -1;
 
@@ -674,8 +686,26 @@ function acItemSelected(item){
   return item.kind==='genus' ? item.speciesList.every(sp=>selected.has(sp)) : selected.has(item.sci);
 }
 
+/* .ac is position:fixed (see <style>), so its position and available height
+   have to be computed against the real viewport rather than left to CSS —
+   that's what lets it fill whatever room is actually free below the search
+   box instead of being capped by #panel's own (possibly shrunken) box. */
+function positionAC(){
+  const r = searchWrap.getBoundingClientRect();
+  const margin = 12;
+  const top = r.bottom + 4;
+  ac.style.left = r.left + 'px';
+  ac.style.width = r.width + 'px';
+  ac.style.top = top + 'px';
+  const available = window.innerHeight - top - margin;
+  ac.style.maxHeight = Math.max(120, Math.min(280, available)) + 'px';
+}
+window.addEventListener('resize', ()=>{ if(ac.classList.contains('open')) positionAC(); });
+document.getElementById('panel').addEventListener('scroll', ()=>{ if(ac.classList.contains('open')) positionAC(); }, {passive:true});
+
 function openAC(list){
   acItems = list; acIndex = -1;
+  positionAC();
   if(!list.length){
     ac.innerHTML = `<div class="ac-empty">No matching species</div>`;
     ac.classList.add('open'); search.setAttribute('aria-expanded','true'); return;
@@ -742,7 +772,9 @@ function paintAC(){
     if(on) el.scrollIntoView({block:'nearest'});
   });
 }
-document.addEventListener('click', e=>{ if(!e.target.closest('.search-wrap')) closeAC(); });
+document.addEventListener('click', e=>{
+  if(!e.target.closest('.search-wrap') && !e.target.closest('#ac')) closeAC();
+});
 
 /* ============================ Bulk controls ============================ */
 document.getElementById('addAll').addEventListener('click', ()=>{
