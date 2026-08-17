@@ -20,6 +20,7 @@ change often, so daily/weekly is plenty.
 Standard library only.
 """
 
+import gzip
 import json
 import os
 import shutil
@@ -34,13 +35,27 @@ HTML_NAME = "index.html"
 OUT_DIR = "dist"
 MAX_FEATURES = 60000
 
-# Keep in sync with CONFIG.layers in index.html.
+# Keep in sync with CONFIG.layers in index.html. property_names restricts the
+# WFS response to just the fields ingest() reads below — each layer carries
+# ~35-40 properties (large free-text inspection notes among them) that would
+# otherwise bloat the fetch ~4x for nothing. GeoServer rejects the whole
+# request if any listed field doesn't exist on that layer, so these are
+# pre-verified per layer rather than derived from the *_FIELDS candidate
+# lists; a layer with property_names=None falls back to fetching every field.
 LAYERS = [
-    "greenspaces:tree",                        # confirmed: ~39k street/park trees
-    "planning:tree_preservation_order_point",   # confirmed-working fallback
+    {  # confirmed: ~39k street/park trees
+        "type_name": "greenspaces:tree",
+        "property_names": ["geom", "species", "common_name", "age", "sitename",
+                            "treelocn", "addnlocn"],
+    },
+    {  # confirmed-working fallback
+        "type_name": "planning:tree_preservation_order_point",
+        "property_names": ["geom", "species", "full_address", "street"],
+    },
 ]
 
-# Keep in sync with CONFIG.*Fields in index.html.
+# Keep in sync with CONFIG.*Fields in index.html, and with property_names above
+# — a field guessed here that isn't also requested there will never be found.
 BINOMIAL_FIELDS = ["species_name", "botanical_name", "scientific_name", "latin_name",
                     "binomial", "species", "tree_species", "spp"]
 COMMON_FIELDS = ["common_name", "commonname", "common_nam", "common", "vernacular"]
@@ -52,15 +67,25 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def fetch_layer(layer):
-    query = urllib.parse.urlencode({
+    params = {
         "service": "WFS", "version": "2.0.0", "request": "GetFeature",
-        "typeNames": layer, "outputFormat": "application/json",
+        "typeNames": layer["type_name"], "outputFormat": "application/json",
         "srsName": "EPSG:4326", "count": str(MAX_FEATURES),
+    }
+    if layer.get("property_names"):
+        params["propertyName"] = ",".join(layer["property_names"])
+    query = urllib.parse.urlencode(params)
+    # Hackney's GeoServer honors Accept-Encoding but urllib won't send it (or
+    # decode the response) on its own — asking cuts the fetch substantially.
+    req = urllib.request.Request(f"{UPSTREAM}?{query}", headers={
+        "User-Agent": "hackney-tree-filter/1.0",
+        "Accept-Encoding": "gzip",
     })
-    req = urllib.request.Request(f"{UPSTREAM}?{query}",
-                                  headers={"User-Agent": "hackney-tree-filter/1.0"})
     with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r).get("features") or []
+        body = r.read()
+        if r.headers.get("Content-Encoding") == "gzip":
+            body = gzip.decompress(body)
+    return json.loads(body).get("features") or []
 
 
 def pick(props, candidates):
@@ -95,14 +120,14 @@ def ingest(features):
 def main():
     trees, used_layer = [], None
     for layer in LAYERS:
-        print(f"Fetching {layer} ...")
+        print(f"Fetching {layer['type_name']} ...")
         try:
             trees = ingest(fetch_layer(layer))
         except (urllib.error.URLError, TimeoutError, ValueError) as e:
             print(f"  failed: {e}")
             continue
         if trees:
-            used_layer = layer
+            used_layer = layer["type_name"]
             break
         print("  0 usable features, trying next layer")
 

@@ -306,16 +306,33 @@
    GetCapabilities on the WFS — ~39,000 features, with `species`, `common_name`,
    `age` and `sitename` properties). The tree-preservation-order layer is kept
    as a fallback in case the main layer is ever renamed.
+
+   Each layer carries ~35-40 properties per feature, including large free-text
+   inspection notes the app never reads — fetching all of them made the raw
+   payload ~46MB instead of ~1.4MB. `propertyName` restricts the WFS response
+   to just the fields actually used below (confirmed valid per layer, since
+   GeoServer *rejects* the whole request if any requested field doesn't exist
+   on that layer — see the "Keep in sync" note above `pick()`). A layer with no
+   `propertyName` falls back to fetching every field, so adding a new guessed
+   layer here without knowing its schema still works, just without the trim.
    ========================================================================== */
 
 const CONFIG = {
   geoserver: 'https://map2.hackney.gov.uk/geoserver/ows',
   // Tried in order; first non-empty response wins.
   layers: [
-    'greenspaces:tree',                        // confirmed: ~39k street/park trees
-    'planning:tree_preservation_order_point'   // confirmed-working fallback
+    {  // confirmed: ~39k street/park trees
+      typeName: 'greenspaces:tree',
+      propertyName: ['geom','species','common_name','age','sitename','treelocn','addnlocn']
+    },
+    {  // confirmed-working fallback
+      typeName: 'planning:tree_preservation_order_point',
+      propertyName: ['geom','species','full_address','street']
+    }
   ],
   // Field auto-detection: first property that exists (case-insensitive) is used.
+  // Keep in sync with the propertyName lists above — a field guessed here that
+  // isn't also requested there will never be found in the response.
   binomialFields: ['species_name','botanical_name','scientific_name','latin_name',
                    'binomial','species','tree_species','spp'],
   commonFields:   ['common_name','commonname','common_nam','common','vernacular'],
@@ -404,17 +421,19 @@ function pick(props, candidates){
 }
 
 async function tryLayer(layer){
-  const u = new URL(CONFIG.geoserver);
-  u.search = new URLSearchParams({
+  const params = {
     service:'WFS', version:'2.0.0', request:'GetFeature',
-    typeNames:layer, outputFormat:'application/json',
+    typeNames:layer.typeName, outputFormat:'application/json',
     srsName:'EPSG:4326', count:String(CONFIG.maxFeatures)
-  }).toString();
+  };
+  if(layer.propertyName) params.propertyName = layer.propertyName.join(',');
+  const u = new URL(CONFIG.geoserver);
+  u.search = new URLSearchParams(params).toString();
   const res = await fetch(u, {headers:{'Accept':'application/json'}});
-  if(!res.ok) throw new Error(layer+' → HTTP '+res.status);
+  if(!res.ok) throw new Error(layer.typeName+' → HTTP '+res.status);
   const gj = await res.json();
-  if(!gj.features || !gj.features.length) throw new Error(layer+' → 0 features');
-  return {layer, gj};
+  if(!gj.features || !gj.features.length) throw new Error(layer.typeName+' → 0 features');
+  return {layer:layer.typeName, gj};
 }
 
 function ingest(gj){

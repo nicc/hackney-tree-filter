@@ -12,6 +12,7 @@ Stop with Ctrl+C.
 Standard library only.
 """
 
+import gzip
 import http.server
 import os
 import re
@@ -70,16 +71,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def proxy(self):
         query = self.path.split("?", 1)[1] if "?" in self.path else ""
         url = UPSTREAM + ("?" + query if query else "")
-        req = urllib.request.Request(url, headers={"User-Agent": "hackney-tree-filter/1.0"})
+        # Hackney's GeoServer honors Accept-Encoding but urllib won't send it (or
+        # decode the response) on its own — asking cuts a ~46MB tree response to
+        # ~4MB on the wire. Decompress here so the browser gets plain JSON either way.
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "hackney-tree-filter/1.0",
+            "Accept-Encoding": "gzip",
+        })
         try:
             with urllib.request.urlopen(req, timeout=45) as r:
-                status, ctype, body = r.status, r.headers.get_content_type(), r.read()
+                status, ctype, encoding, body = r.status, r.headers.get_content_type(), r.headers.get("Content-Encoding"), r.read()
         except urllib.error.HTTPError as e:               # forward upstream 4xx/5xx
-            status, ctype, body = e.code, e.headers.get_content_type(), e.read()
+            status, ctype, encoding, body = e.code, e.headers.get_content_type(), e.headers.get("Content-Encoding"), e.read()
         except (urllib.error.URLError, TimeoutError) as e:
-            status, ctype = 502, "text/plain"
+            status, ctype, encoding = 502, "text/plain", None
             body = f"Upstream fetch failed: {e}".encode("utf-8")
             print(f"  proxy error: {e}", file=sys.stderr)
+        if encoding == "gzip":
+            body = gzip.decompress(body)
         self.send_response(status)
         self.send_header("Content-Type", ctype or "application/octet-stream")
         self.send_header("Access-Control-Allow-Origin", "*")
