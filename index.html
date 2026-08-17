@@ -60,10 +60,6 @@
     font-size:11px;letter-spacing:.16em;text-transform:uppercase;
     color:var(--bark);font-weight:600;margin:0 0 6px
   }
-  h1{
-    font-family:Fraunces,Georgia,serif;font-weight:600;font-size:27px;line-height:1.05;
-    margin:0;letter-spacing:-.01em
-  }
   .leaf-rule{height:2px;margin:14px 0 0;
     background:linear-gradient(90deg,var(--moss) 0 38px,var(--line) 38px)}
   .readout{padding:12px 22px;border-bottom:1px solid var(--line);
@@ -129,7 +125,7 @@
   .chips-head:focus-visible{outline:2px solid var(--moss);outline-offset:2px}
   .chips-head-right{display:inline-flex;align-items:baseline;gap:6px}
   .chips-head .count{font-size:12px;color:var(--ink-soft)}
-  .chips-head .chev{font-size:10px;color:var(--ink-soft);transition:transform .15s ease}
+  .chips-head .chev{font-size:12px;color:var(--ink-soft);transition:transform .15s ease}
   .controls.chips-collapsed .chips-head .chev{transform:rotate(-90deg)}
   .controls.chips-collapsed .chips{display:none}
   .chips{
@@ -181,18 +177,15 @@
     }
     #map{min-height:36dvh}
 
-    /* Drop the big serif heading — the eyebrow line alone identifies the app,
-       and the room it frees goes to the search + chip list below. */
     header.brand{padding:calc(14px + env(safe-area-inset-top)) 52px 10px 18px}
     .eyebrow{margin-bottom:0}
-    h1{display:none}
     .leaf-rule{margin-top:8px}
     .controls{padding:12px 18px;gap:10px}
 
     /* Bigger touch targets */
     button.btn{padding:12px 10px;font-size:14px}
     .chip{padding:8px 8px 8px 11px}
-    .chip .x{width:24px;height:24px;font-size:15px}
+    .chip .x{width:24px;height:24px;flex:0 0 24px;font-size:15px}
 
     /* Trees-shown/species-on and the data-source status move out of the normal
        flow and into a toggleable overlay, opened via the (i) button. */
@@ -265,8 +258,7 @@
 <div id="app">
   <aside id="panel">
     <header class="brand">
-      <p class="eyebrow">London Borough of Hackney · Street trees</p>
-      <h1>Hackney Tree Map</h1>
+      <p class="eyebrow">Street trees of Hackney, London</p>
       <div class="leaf-rule"></div>
     </header>
 
@@ -293,7 +285,7 @@
       </div>
 
       <div class="bulk">
-        <button class="btn primary" id="addAll" type="button">Select all species</button>
+        <button class="btn primary" id="addAll" type="button">Show all</button>
         <button class="btn ghost" id="removeAll" type="button">Clear all</button>
       </div>
 
@@ -419,8 +411,9 @@ const SAMPLE = [
 
 /* ============================ Map ============================ */
 const map = L.map('map', {preferCanvas:true, zoomControl:true}).setView(CONFIG.center, CONFIG.zoom);
+map.attributionControl.setPrefix(false);   // drop Leaflet's own "Leaflet |" credit to save space
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Tree data &copy; London Borough of Hackney',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="https://carto.com/attributions">CARTO</a> &amp; LB Hackney',
   subdomains:'abcd', maxZoom:19
 }).addTo(map);
 const canvasRenderer = L.canvas({padding:0.5});
@@ -441,6 +434,18 @@ function colorFor(sci){
 }
 
 /* ============================ Data loading ============================ */
+/* Site/planting-status placeholders and one export artifact, not real species
+   — reviewed by hand against the live dataset, not pattern-matched. Keep in
+   sync with SPECIES_BLOCKLIST in build.py. */
+const SPECIES_BLOCKLIST = new Set([
+  "'Aborted Tree Pit'", "'Vacant tree pit'", 'New Tree Large', 'New Tree Medium',
+  "'Stump only'", "'Unknown Species - Broadleaf'", "'Dead Tree - Unknown Species'",
+  "'Species not known'", "'Species not in list'", "'Unknown Species - Conifer'",
+  "'Suitable location for new tree'", "SuD's  - New", "'Mixed broadleaves'",
+  'New Tree - Small', "'Climber'", "'Mixed broadleaves and conifers'",
+  "'No Tree - Pit Reinstated'", '[Copse Header Record]',
+]);
+
 function pick(props, candidates){
   const keys = Object.keys(props);
   for(const cand of candidates){
@@ -476,7 +481,7 @@ function ingest(gj){
     else continue;
     const p = f.properties || {};
     const sci = pick(p, CONFIG.binomialFields);
-    if(!sci) continue;
+    if(!sci || SPECIES_BLOCKLIST.has(sci)) continue;
     out.push({
       sci,
       common: pick(p, CONFIG.commonFields),
@@ -590,7 +595,7 @@ function renderChips(){
 
   if(selected.size === 0){
     box.innerHTML = `<div class="empty-note">No species selected — the map is empty.<br>
-      Search above to add one, or <b>Select all species</b> to show everything.</div>`;
+      Search above to add one, or <b>Show all</b> to show everything.</div>`;
     countEl.textContent = `0 of ${SPECIES.length}`;
     return;
   }

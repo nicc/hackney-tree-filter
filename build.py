@@ -93,6 +93,19 @@ def fetch_layer(layer):
     return json.loads(body).get("features") or []
 
 
+# Site/planting-status placeholders and one export artifact, not real species
+# — reviewed by hand against the live dataset, not pattern-matched. Keep in
+# sync with SPECIES_BLOCKLIST in index.html.
+SPECIES_BLOCKLIST = {
+    "'Aborted Tree Pit'", "'Vacant tree pit'", "New Tree Large", "New Tree Medium",
+    "'Stump only'", "'Unknown Species - Broadleaf'", "'Dead Tree - Unknown Species'",
+    "'Species not known'", "'Species not in list'", "'Unknown Species - Conifer'",
+    "'Suitable location for new tree'", "SuD's  - New", "'Mixed broadleaves'",
+    "New Tree - Small", "'Climber'", "'Mixed broadleaves and conifers'",
+    "'No Tree - Pit Reinstated'", "[Copse Header Record]",
+}
+
+
 def pick(props, candidates):
     lower = {k.lower(): v for k, v in props.items()}
     for cand in candidates:
@@ -115,7 +128,7 @@ def ingest(features):
             continue
         props = f.get("properties") or {}
         sci = pick(props, BINOMIAL_FIELDS)
-        if not sci:
+        if not sci or sci in SPECIES_BLOCKLIST:
             continue
         out.append([sci, pick(props, COMMON_FIELDS), pick(props, AGE_FIELDS),
                      pick(props, ADDRESS_FIELDS), lng, lat])
