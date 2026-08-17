@@ -14,6 +14,9 @@ self-contained dist/ folder:
     dist/.htaccess    tells Apache to gzip trees.json (~3.5MB -> ~400KB) —
                       matters most on a slow mobile connection; harmless
                       (just unused) on a host that isn't Apache
+    dist/htaccess     exact duplicate of the above, without the leading dot —
+                      upload this instead if your FTP client hides/mangles
+                      dotfiles, then rename it to .htaccess on the server
 
 Upload dist/ to any static host (GitHub Pages, Netlify, S3, ...) as-is — the
 app loads trees.json directly, so no server or proxy is required there.
@@ -35,8 +38,11 @@ from datetime import datetime, timezone
 
 UPSTREAM = "https://map2.hackney.gov.uk/geoserver/ows"
 HTML_NAME = "index.html"
-HTACCESS_SRC = "htaccess"       # committed without the leading dot so it isn't
-HTACCESS_OUT = ".htaccess"      # mistaken for a live config file in the repo root
+HTACCESS_SRC = "htaccess"          # committed without the leading dot so it isn't
+HTACCESS_OUT_DOTTED = ".htaccess"  # mistaken for a live config file in the repo root
+HTACCESS_OUT_PLAIN = "htaccess"    # dotfile twin — many FTP clients hide/mangle
+                                    # dotfiles, so upload this one and rename
+                                    # it to .htaccess on the server afterward
 OUT_DIR = "dist"
 MAX_FEATURES = 60000
 
@@ -164,13 +170,16 @@ def main():
         }, f, separators=(",", ":"))
 
     shutil.copyfile(os.path.join(HERE, HTML_NAME), os.path.join(out_dir, HTML_NAME))
-    shutil.copyfile(os.path.join(HERE, HTACCESS_SRC), os.path.join(out_dir, HTACCESS_OUT))
+    shutil.copyfile(os.path.join(HERE, HTACCESS_SRC), os.path.join(out_dir, HTACCESS_OUT_DOTTED))
+    shutil.copyfile(os.path.join(HERE, HTACCESS_SRC), os.path.join(out_dir, HTACCESS_OUT_PLAIN))
 
     size_mb = os.path.getsize(trees_path) / 1_000_000
     print(f"\nWrote {out_dir}/ — {len(trees):,} trees from {used_layer} ({size_mb:.1f} MB).")
-    print("Upload the whole dist/ folder (including .htaccess) to your static host;")
-    print("on Apache that gzips trees.json in transit — the biggest lever for load")
-    print("time on a slow mobile connection.")
+    print("Upload the whole dist/ folder to your static host. It has both .htaccess")
+    print("and a dotless htaccess twin — if your FTP client hides/mangles dotfiles,")
+    print("upload htaccess instead and rename it to .htaccess on the server. Either")
+    print("way it gzips trees.json in transit — the biggest lever for load time on")
+    print("a slow mobile connection.")
 
 
 if __name__ == "__main__":
