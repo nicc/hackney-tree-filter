@@ -1,4 +1,4 @@
-# Hackney Tree Filter
+# Hackney Tree Map
 
 A local, single-file version of the [Hackney Tree Map](https://map2.hackney.gov.uk/maps/trees/index.html)
 with a species filter: type a **binomial name**, get autocomplete, add/remove species

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run the Hackney Tree Filter locally with live data.
+Run the Hackney Tree Map locally with live data.
 
     python3 run.py
 
@@ -114,7 +114,7 @@ def main():
     url = f"http://127.0.0.1:{port}/"
 
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    print(f"Hackney Tree Filter running at {url}")
+    print(f"Hackney Tree Map running at {url}")
     print("Serving the page and proxying Hackney's WFS on the same origin.")
     print("Press Ctrl+C to stop.")
     try:

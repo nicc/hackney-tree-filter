@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build a static, uploadable snapshot of the Hackney Tree Filter.
+Build a static, uploadable snapshot of the Hackney Tree Map.
 
     python3 build.py
 
