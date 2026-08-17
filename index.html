@@ -40,7 +40,7 @@
   .sci{font-family:Fraunces,Georgia,serif;font-style:italic;font-weight:500;letter-spacing:.1px}
 
   #app{
-    display:flex;height:100dvh;overflow:hidden;
+    display:flex;height:100dvh;overflow:hidden;position:relative;   /* anchors #panelFold */
     padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)
   }
 
@@ -50,7 +50,8 @@
     display:flex;flex-direction:column;
     background:var(--paper);
     border-right:1px solid var(--line);
-    z-index:1000;
+    z-index:1050;   /* above Leaflet's own controls (they're also 1000, and win
+                       ties on DOM order now that #map sits full-width beneath) */
     overflow-y:auto;    /* safety net: scroll the whole panel if content can't fit
                            the viewport (e.g. very short landscape phones), instead
                            of letting it overflow and overlap the map */
@@ -62,8 +63,7 @@
   }
   .leaf-rule{height:2px;margin:14px 0 0;
     background:linear-gradient(90deg,var(--moss) 0 38px,var(--line) 38px)}
-  .readout{padding:12px 22px;border-bottom:1px solid var(--line);
-    display:flex;gap:18px;align-items:baseline}
+  .readout{display:none}   /* shown only via body.info-open — see the info-toggle rules below */
   .readout .big{font-family:Fraunces,serif;font-size:22px;font-weight:600;line-height:1}
   .readout .lbl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
 
@@ -145,16 +145,75 @@
   .empty-note{color:var(--ink-soft);font-size:13px;line-height:1.5;padding:6px 2px}
   .empty-note b{color:var(--ink)}
 
-  /* Status banner (data source) */
-  .status{margin:0 22px 16px;padding:9px 11px;border-radius:8px;font-size:12px;line-height:1.45;
+  /* Status banner (data source) — shown only via body.info-open, see below */
+  .status{display:none;padding:9px 11px;border-radius:8px;font-size:12px;line-height:1.45;
     border:1px solid var(--line);background:var(--paper-2);color:var(--ink-soft)}
-  .status.live{border-color:var(--moss);background:rgba(62,107,74,.09);color:var(--moss-deep)}
-  .status.sample{border-color:var(--bark);background:rgba(122,82,51,.08);color:#5c3e26}
+  /* Solid, not translucent: .status only ever appears as a floating overlay
+     card now (never inline against the panel's own paper background, which
+     is what the old low-alpha tints were calibrated for), so it needs to
+     fully hide whatever's underneath rather than let it bleed through. */
+  .status.live{border-color:var(--moss);background:#eaf2ec;color:var(--moss-deep)}
+  .status.sample{border-color:var(--bark);background:#f5efe8;color:#5c3e26}
   .status b{font-weight:600}
   .status a{color:inherit}
 
-  /* Info toggle + backdrop — mobile only, hidden here, shown in the media query below */
-  #infoToggle,#infoBackdrop{display:none}
+  /* Info toggle + backdrop — the (i) button and its small status dot appear on
+     both breakpoints, so tree-data status is always a tap away without
+     permanently occupying panel space. */
+  #infoBackdrop{display:none}
+  #infoToggle{
+    display:flex;align-items:center;justify-content:center;
+    position:fixed;top:calc(12px + env(safe-area-inset-top));right:14px;
+    width:32px;height:32px;border-radius:50%;padding:0;
+    background:#fff;border:1px solid var(--line);color:var(--ink-soft);
+    font:600 16px/1 Fraunces,Georgia,serif;cursor:pointer;z-index:1300;
+  }
+  #infoToggle:focus-visible{outline:2px solid var(--moss);outline-offset:2px}
+  /* Small dot on the toggle: pulses while data is still loading, settles to
+     a solid colour (matching the status banner's own colour language) once
+     it resolves — a glance is enough, tapping through gives the detail. */
+  #infoToggle::after{
+    content:'';position:absolute;top:-2px;right:-2px;
+    width:10px;height:10px;border-radius:50%;
+    background:var(--sage);border:1.5px solid var(--paper);
+    opacity:0;transition:background-color .2s ease;
+  }
+  #infoToggle.loading::after{
+    opacity:1;background:var(--sage);animation:infoPulse 1.4s ease-in-out infinite;
+  }
+  #infoToggle.status-live::after{opacity:1;background:var(--moss)}
+  #infoToggle.status-sample::after{opacity:1;background:var(--bark)}
+  @keyframes infoPulse{
+    0%,100%{transform:scale(1);opacity:.9}
+    50%{transform:scale(1.35);opacity:.4}
+  }
+
+  body.info-open #infoBackdrop{
+    display:block;position:fixed;inset:0;background:rgba(28,43,36,.6);z-index:1240;
+  }
+  /* A fixed-width card anchored under the toggle, not an edge-to-edge banner —
+     the old mobile-only version spanned left:14px to right:14px, which only
+     made sense when the panel was the full viewport width. */
+  body.info-open .readout,
+  body.info-open .status{
+    display:block;position:fixed;right:14px;
+    width:min(300px, calc(100vw - 28px));
+    z-index:1250;border-radius:10px;box-shadow:var(--shadow);margin:0;
+  }
+  body.info-open .readout{
+    top:calc(52px + env(safe-area-inset-top));
+    display:flex;gap:18px;align-items:baseline;padding:14px 16px;
+    background:#fff;border:1px solid var(--line);
+  }
+  body.info-open .status{
+    top:calc(124px + env(safe-area-inset-top));
+    padding:12px 14px;
+  }
+
+  /* Fold control for the panel — hidden here; only makes sense (and only
+     appears) where the panel sits beside the map, not stacked above it. See
+     the combined media query further down. */
+  #panelFold{display:none}
 
   /* ---------- Map ---------- */
   #map{flex:1;background:#dfe4dd}
@@ -186,55 +245,6 @@
     button.btn{padding:12px 10px;font-size:14px}
     .chip{padding:8px 8px 8px 11px}
     .chip .x{width:24px;height:24px;flex:0 0 24px;font-size:15px}
-
-    /* Trees-shown/species-on and the data-source status move out of the normal
-       flow and into a toggleable overlay, opened via the (i) button. */
-    #infoToggle{
-      display:flex;align-items:center;justify-content:center;
-      position:fixed;top:calc(12px + env(safe-area-inset-top));right:14px;
-      width:32px;height:32px;border-radius:50%;padding:0;
-      background:#fff;border:1px solid var(--line);color:var(--ink-soft);
-      font:600 16px/1 Fraunces,Georgia,serif;cursor:pointer;z-index:1300;
-    }
-    #infoToggle:focus-visible{outline:2px solid var(--moss);outline-offset:2px}
-    /* Small dot on the toggle: pulses while data is still loading, settles to
-       a solid colour (matching the status banner's own colour language) once
-       it resolves — a glance is enough, tapping through gives the detail. */
-    #infoToggle::after{
-      content:'';position:absolute;top:-2px;right:-2px;
-      width:10px;height:10px;border-radius:50%;
-      background:var(--sage);border:1.5px solid var(--paper);
-      opacity:0;transition:background-color .2s ease;
-    }
-    #infoToggle.loading::after{
-      opacity:1;background:var(--sage);animation:infoPulse 1.4s ease-in-out infinite;
-    }
-    #infoToggle.status-live::after{opacity:1;background:var(--moss)}
-    #infoToggle.status-sample::after{opacity:1;background:var(--bark)}
-    @keyframes infoPulse{
-      0%,100%{transform:scale(1);opacity:.9}
-      50%{transform:scale(1.35);opacity:.4}
-    }
-
-    .readout,.status{display:none}
-
-    body.info-open #infoBackdrop{
-      display:block;position:fixed;inset:0;background:rgba(28,43,36,.35);z-index:1240;
-    }
-    body.info-open .readout,
-    body.info-open .status{
-      display:block;position:fixed;left:14px;right:14px;z-index:1250;
-      background:#fff;border:1px solid var(--line);border-radius:10px;
-      box-shadow:var(--shadow);margin:0;
-    }
-    body.info-open .readout{
-      top:calc(52px + env(safe-area-inset-top));
-      display:flex;gap:18px;align-items:baseline;padding:14px 16px;
-    }
-    body.info-open .status{
-      top:calc(126px + env(safe-area-inset-top));
-      padding:12px 14px;
-    }
   }
   /* Short landscape phones: side-by-side beats a squeezed stack + sliver of map */
   @media (max-width:760px) and (orientation:landscape) and (max-height:500px){
@@ -247,6 +257,34 @@
        instead of shrinking below content and overlapping the status banner. */
     .controls{flex:none;min-height:0}
     .chips{flex:none;max-height:140px}
+  }
+
+  /* Panel fold — collapses the whole panel to reclaim the map, wherever the
+     panel sits *beside* the map rather than above it: true desktop, and the
+     mobile-landscape override just above. One combined query instead of
+     duplicating this in both, since --panel-w already varies correctly
+     between them (340px vs 280px) and this reads off the same variable.
+
+     The panel becomes an overlay (position:absolute, slid via transform)
+     rather than resizing #map's flex-basis. #map's own box never changes
+     size this way, so Leaflet has nothing to reflow/repan when the panel
+     opens or closes — the map genuinely doesn't move, not just "mostly". */
+  @media (min-width:761px), (max-width:760px) and (orientation:landscape) and (max-height:500px){
+    #panelFold{
+      display:flex;align-items:center;justify-content:center;
+      position:absolute;top:50%;left:var(--panel-w);transform:translate(-50%,-50%);
+      width:22px;height:44px;border-radius:6px;padding:0;
+      background:#fff;border:1px solid var(--line);color:var(--ink-soft);
+      cursor:pointer;z-index:1100;transition:left .25s ease;
+    }
+    #panelFold:hover{background:var(--paper-2)}
+    #panelFold:focus-visible{outline:2px solid var(--moss);outline-offset:2px}
+    #panelFold .fold-chev{font-size:14px;line-height:1;transition:transform .2s ease;display:block}
+    body.panel-folded #panelFold{left:0;transform:translateY(-50%)}
+    body.panel-folded #panelFold .fold-chev{transform:rotate(180deg)}
+
+    #panel{position:absolute;top:0;left:0;height:100%;transition:transform .25s ease}
+    body.panel-folded #panel{transform:translateX(-100%)}
   }
   @media (prefers-reduced-motion:reduce){
     *{transition:none!important}
@@ -261,16 +299,6 @@
       <p class="eyebrow">Street trees of Hackney, London</p>
       <div class="leaf-rule"></div>
     </header>
-
-    <!-- Mobile only: readout + status move into a toggleable overlay (see #infoToggle below) -->
-    <button id="infoToggle" type="button" aria-expanded="false" aria-controls="readout status"
-            aria-label="Tree data status — loading">ⓘ</button>
-    <div id="infoBackdrop"></div>
-
-    <div class="readout" id="readout">
-      <div><div class="big" id="shownCount">0</div><div class="lbl">trees shown</div></div>
-      <div><div class="big" id="speciesCount">0</div><div class="lbl">species</div></div>
-    </div>
 
     <div class="controls">
       <div>
@@ -298,9 +326,25 @@
       </button>
       <div class="chips" id="chips" aria-live="polite"></div>
     </div>
-
-    <div class="status" id="status">Loading Hackney tree data…</div>
   </aside>
+
+  <!-- Siblings of #panel, not children of it: #panel can slide via `transform` when
+       folded, and a `transform` on an ancestor would otherwise hijack these
+       fixed-position elements (redefining their containing block), pulling them
+       along with it. Keeping them out of #panel is what lets them stay put. -->
+  <button id="infoToggle" type="button" aria-expanded="false" aria-controls="readout status"
+          aria-label="Tree data status — loading">ⓘ</button>
+  <div id="infoBackdrop"></div>
+  <div class="readout" id="readout">
+    <div><div class="big" id="shownCount">0</div><div class="lbl">trees shown</div></div>
+    <div><div class="big" id="speciesCount">0</div><div class="lbl">species</div></div>
+  </div>
+  <div class="status" id="status">Loading Hackney tree data…</div>
+
+  <!-- Row layouts only (desktop, mobile landscape) — folds #panel away to give the map more room -->
+  <button id="panelFold" type="button" aria-expanded="true" aria-controls="panel" aria-label="Hide panel">
+    <span class="fold-chev" aria-hidden="true">‹</span>
+  </button>
 
   <div id="map"></div>
 </div>
@@ -410,8 +454,12 @@ const SAMPLE = [
 ].map(([sci,common,lng,lat]) => ({sci, common, age:null, addr:null, lng, lat}));
 
 /* ============================ Map ============================ */
-const map = L.map('map', {preferCanvas:true, zoomControl:true}).setView(CONFIG.center, CONFIG.zoom);
+const map = L.map('map', {preferCanvas:true, zoomControl:false}).setView(CONFIG.center, CONFIG.zoom);
 map.attributionControl.setPrefix(false);   // drop Leaflet's own "Leaflet |" credit to save space
+// The panel is a full-height overlay on the left in row layouts (see #panel in
+// <style>), so a default top-left zoom control would sit right under it —
+// bottom-right is the one corner the panel never reaches, folded or not.
+L.control.zoom({position:'bottomright'}).addTo(map);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
   attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="https://carto.com/attributions">CARTO</a> &amp; LB Hackney',
   subdomains:'abcd', maxZoom:19
@@ -718,6 +766,24 @@ chipsToggle.addEventListener('click', ()=>{
 if(window.matchMedia('(max-width:760px)').matches){
   controlsEl.classList.add('chips-collapsed');
   chipsToggle.setAttribute('aria-expanded', 'false');
+}
+
+/* ============================ Panel fold (row layouts) ============================ */
+// The panel is an overlay here (slides via transform, see the combined media
+// query in <style>) rather than something #map resizes around, so folding
+// never touches #map's own box — nothing for Leaflet to reflow or re-pan.
+const panelFold = document.getElementById('panelFold');
+panelFold.addEventListener('click', ()=>{
+  const folded = document.body.classList.toggle('panel-folded');
+  panelFold.setAttribute('aria-expanded', String(!folded));
+});
+// Mobile landscape already reuses the desktop row layout (see the combined
+// media query in <style>) — default the panel to folded there so the map is
+// what you see first, same reasoning as the chips default above. True
+// desktop stays open by default. Checked once at load, not on resize.
+if(window.matchMedia('(max-width:760px) and (orientation:landscape) and (max-height:500px)').matches){
+  document.body.classList.add('panel-folded');
+  panelFold.setAttribute('aria-expanded', 'false');
 }
 
 /* ============================ Info overlay (mobile) ============================ */
