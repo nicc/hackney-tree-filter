@@ -98,6 +98,14 @@
   .ac-item.active,.ac-item:hover{background:var(--paper-2)}
   .ac-empty{padding:10px;color:var(--ink-soft);font-size:13px}
   .ac-common{color:var(--ink-soft);font-style:normal;font-family:Inter,sans-serif;font-size:12px}
+  /* Genus rows add every species in the genus at once — no single dot makes
+     sense (each species keeps its own colour), so a badge stands in for it. */
+  .ac-genus{background:rgba(62,107,74,.06)}
+  .ac-genus .genus-badge{
+    font-size:9px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;
+    color:var(--moss-deep);background:rgba(62,107,74,.16);
+    border-radius:4px;padding:2px 5px;flex:0 0 auto;white-space:nowrap
+  }
 
   /* Bulk buttons */
   .bulk{display:flex;gap:8px}
@@ -420,6 +428,7 @@ const canvasRenderer = L.canvas({padding:0.5});
 /* ============================ State ============================ */
 let TREES = [];                 // {sci, common, age, addr, lng, lat}
 let SPECIES = [];               // [{sci, common, count}]  distinct, sorted
+let GENERA = [];                 // [{genus, speciesList, count}]  genera with >1 species
 const selected = new Set();     // active binomial whitelist
 const colorCache = new Map();
 
@@ -528,6 +537,22 @@ function buildSpecies(){
   SPECIES = [...m.values()].sort((a,b)=>a.sci.localeCompare(b.sci));
 }
 
+/* Genus is just the first word of the binomial. Search-box convenience only —
+   selecting one adds its member species to `selected`, same as picking them
+   individually; the genus itself is never a member of `selected`, so it never
+   appears as a chip and the map still renders (and is filtered) per species. */
+function buildGenera(){
+  const m = new Map();
+  for(const s of SPECIES){
+    const genus = s.sci.split(' ')[0];
+    const e = m.get(genus) || {genus, speciesList:[], count:0};
+    e.speciesList.push(s.sci);
+    e.count += s.count;
+    m.set(genus, e);
+  }
+  GENERA = [...m.values()].filter(g=>g.speciesList.length>1).sort((a,b)=>a.genus.localeCompare(b.genus));
+}
+
 /* ============================ Rendering ============================ */
 let layerGroup = L.layerGroup().addTo(map);
 
@@ -591,18 +616,31 @@ const search = document.getElementById('search');
 const ac = document.getElementById('ac');
 let acItems = [], acIndex = -1;
 
+/* A genus item counts as "already selected" once every species in it is. */
+function acItemSelected(item){
+  return item.kind==='genus' ? item.speciesList.every(sp=>selected.has(sp)) : selected.has(item.sci);
+}
+
 function openAC(list){
   acItems = list; acIndex = -1;
   if(!list.length){
     ac.innerHTML = `<div class="ac-empty">No matching species</div>`;
     ac.classList.add('open'); search.setAttribute('aria-expanded','true'); return;
   }
-  ac.innerHTML = list.map((s,i)=>{
-    const disabled = selected.has(s.sci);
+  ac.innerHTML = list.map((item,i)=>{
+    if(item.kind==='genus'){
+      const disabled = acItemSelected(item);
+      return `<div class="ac-item ac-genus${disabled?' active':''}" data-i="${i}" role="option">
+        <span class="genus-badge">Genus</span>
+        <span class="n"><span class="sci">${escapeHTML(item.genus)}</span> <span class="ac-common">— ${item.speciesList.length} species</span></span>
+        <span class="c">${disabled?'✓':item.count.toLocaleString()}</span>
+      </div>`;
+    }
+    const disabled = acItemSelected(item);
     return `<div class="ac-item${disabled?' active':''}" data-i="${i}" role="option">
-      <span class="dot" style="background:${colorFor(s.sci)}"></span>
-      <span class="n"><span class="sci">${escapeHTML(s.sci)}</span>${s.common?` <span class="ac-common">${escapeHTML(s.common)}</span>`:''}</span>
-      <span class="c">${disabled?'✓':s.count.toLocaleString()}</span>
+      <span class="dot" style="background:${colorFor(item.sci)}"></span>
+      <span class="n"><span class="sci">${escapeHTML(item.sci)}</span>${item.common?` <span class="ac-common">${escapeHTML(item.common)}</span>`:''}</span>
+      <span class="c">${disabled?'✓':item.count.toLocaleString()}</span>
     </div>`;
   }).join('');
   ac.querySelectorAll('.ac-item').forEach(el=>{
@@ -614,19 +652,25 @@ function closeAC(){ ac.classList.remove('open'); search.setAttribute('aria-expan
 
 function queryMatches(q){
   q = q.trim().toLowerCase();
-  const pool = SPECIES;
-  if(!q) return pool.slice(0,12);
-  const starts=[], contains=[];
-  for(const s of pool){
-    const hay = (s.sci+' '+(s.common||'')).toLowerCase();
-    if(s.sci.toLowerCase().startsWith(q)) starts.push(s);
-    else if(hay.includes(q)) contains.push(s);
+  if(!q) return SPECIES.slice(0,12);
+  const genusStarts=[], genusContains=[], speciesStarts=[], speciesContains=[];
+  for(const g of GENERA){
+    if(g.genus.toLowerCase().startsWith(q)) genusStarts.push({...g, kind:'genus'});
+    else if(g.genus.toLowerCase().includes(q)) genusContains.push({...g, kind:'genus'});
   }
-  return starts.concat(contains).slice(0,12);
+  for(const s of SPECIES){
+    const hay = (s.sci+' '+(s.common||'')).toLowerCase();
+    if(s.sci.toLowerCase().startsWith(q)) speciesStarts.push(s);
+    else if(hay.includes(q)) speciesContains.push(s);
+  }
+  // Genus first within each tier — it's the broader pick, and typing e.g.
+  // "quercus" would otherwise bury it under every individual oak species.
+  return [...genusStarts, ...speciesStarts, ...genusContains, ...speciesContains].slice(0,12);
 }
-function choose(s){
-  if(!s) return;
-  selected.add(s.sci);
+function choose(item){
+  if(!item) return;
+  if(item.kind==='genus') item.speciesList.forEach(sp=>selected.add(sp));
+  else selected.add(item.sci);
   search.value=''; closeAC(); update(); search.focus();
 }
 
@@ -641,7 +685,7 @@ search.addEventListener('keydown', e=>{
 });
 function paintAC(){
   ac.querySelectorAll('.ac-item').forEach((el,i)=>{
-    const on = i===acIndex; el.classList.toggle('active', on || selected.has(acItems[i].sci));
+    const on = i===acIndex; el.classList.toggle('active', on || acItemSelected(acItems[i]));
     if(on) el.scrollIntoView({block:'nearest'});
   });
 }
@@ -700,6 +744,7 @@ function setStatus(kind,html){
 (async function init(){
   TREES = await loadData();
   buildSpecies();
+  buildGenera();
   SPECIES.forEach(s=>selected.add(s.sci));   // start with everything shown
   update();
 })();
