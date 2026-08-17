@@ -39,7 +39,10 @@
   /* Latin binomials are set in italic serif — the field-guide convention. */
   .sci{font-family:Fraunces,Georgia,serif;font-style:italic;font-weight:500;letter-spacing:.1px}
 
-  #app{display:flex;height:100dvh;overflow:hidden}
+  #app{
+    display:flex;height:100dvh;overflow:hidden;
+    padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)
+  }
 
   /* ---------- Control panel ---------- */
   #panel{
@@ -48,6 +51,9 @@
     background:var(--paper);
     border-right:1px solid var(--line);
     z-index:1000;
+    overflow-y:auto;    /* safety net: scroll the whole panel if content can't fit
+                           the viewport (e.g. very short landscape phones), instead
+                           of letting it overflow and overlap the map */
   }
   header.brand{padding:20px 22px 16px}
   .eyebrow{
@@ -74,7 +80,7 @@
   .search-wrap{position:relative}
   #search{
     width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
-    background:#fff;color:var(--ink);font-size:15px;font-family:inherit
+    background:#fff;color:var(--ink);font-size:16px;font-family:inherit
   }
   #search::placeholder{color:#9a9683;font-style:normal}
   #search:focus{outline:none;border-color:var(--moss);box-shadow:0 0 0 3px rgba(62,107,74,.15)}
@@ -133,6 +139,9 @@
   .status b{font-weight:600}
   .status a{color:inherit}
 
+  /* Info toggle + backdrop — mobile only, hidden here, shown in the media query below */
+  #infoToggle,#infoBackdrop{display:none}
+
   /* ---------- Map ---------- */
   #map{flex:1;background:#dfe4dd}
   .leaflet-container{font-family:Inter,sans-serif}
@@ -142,13 +151,73 @@
   .pop-meta{font-size:12px;color:var(--ink);margin:1px 0}
   .pop-meta span{color:var(--ink-soft)}
 
-  /* Mobile: stack panel above a shorter map */
-  #panel-toggle{display:none}
+  /* Mobile: stack panel above a shorter map, and trim the chrome around the
+     header/readout so the search + chip list (the parts you actually touch)
+     get more of the limited vertical space. */
   @media (max-width:760px){
     :root{--panel-w:100%}
     #app{flex-direction:column}
-    #panel{flex:0 0 auto;max-height:56dvh;border-right:none;border-bottom:1px solid var(--line)}
-    #map{min-height:44dvh}
+    #panel{
+      flex:0 0 auto;max-height:64dvh;border-right:none;border-bottom:1px solid var(--line);
+      padding-bottom:env(safe-area-inset-bottom);
+    }
+    #map{min-height:36dvh}
+
+    /* Drop the big serif heading — the eyebrow line alone identifies the app,
+       and the room it frees goes to the search + chip list below. */
+    header.brand{padding:calc(14px + env(safe-area-inset-top)) 52px 10px 18px}
+    .eyebrow{margin-bottom:0}
+    h1{display:none}
+    .leaf-rule{margin-top:8px}
+    .controls{padding:12px 18px;gap:10px}
+
+    /* Bigger touch targets */
+    button.btn{padding:12px 10px;font-size:14px}
+    .chip{padding:8px 8px 8px 11px}
+    .chip .x{width:24px;height:24px;font-size:15px}
+
+    /* Trees-shown/species-on and the data-source status move out of the normal
+       flow and into a toggleable overlay, opened via the (i) button. */
+    #infoToggle{
+      display:flex;align-items:center;justify-content:center;
+      position:fixed;top:calc(12px + env(safe-area-inset-top));right:14px;
+      width:32px;height:32px;border-radius:50%;padding:0;
+      background:#fff;border:1px solid var(--line);color:var(--ink-soft);
+      font:600 16px/1 Fraunces,Georgia,serif;cursor:pointer;z-index:1300;
+    }
+    #infoToggle:focus-visible{outline:2px solid var(--moss);outline-offset:2px}
+
+    .readout,.status{display:none}
+
+    body.info-open #infoBackdrop{
+      display:block;position:fixed;inset:0;background:rgba(28,43,36,.35);z-index:1240;
+    }
+    body.info-open .readout,
+    body.info-open .status{
+      display:block;position:fixed;left:14px;right:14px;z-index:1250;
+      background:#fff;border:1px solid var(--line);border-radius:10px;
+      box-shadow:var(--shadow);margin:0;
+    }
+    body.info-open .readout{
+      top:calc(52px + env(safe-area-inset-top));
+      display:flex;gap:18px;align-items:baseline;padding:14px 16px;
+    }
+    body.info-open .status{
+      top:calc(126px + env(safe-area-inset-top));
+      padding:12px 14px;
+    }
+  }
+  /* Short landscape phones: side-by-side beats a squeezed stack + sliver of map */
+  @media (max-width:760px) and (orientation:landscape) and (max-height:500px){
+    :root{--panel-w:280px}
+    #app{flex-direction:row}
+    #panel{max-height:none;height:100dvh;border-bottom:none;border-right:1px solid var(--line)}
+    #map{min-height:0}
+    /* Too little height here for the usual flex-to-fit trick — let these take
+       their natural size and scroll the whole panel (#panel overflow-y:auto)
+       instead of shrinking below content and overlapping the status banner. */
+    .controls{flex:none;min-height:0}
+    .chips{flex:none;max-height:140px}
   }
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -162,9 +231,14 @@
       <div class="leaf-rule"></div>
     </header>
 
-    <div class="readout">
+    <!-- Mobile only: readout + status move into a toggleable overlay (see #infoToggle below) -->
+    <button id="infoToggle" type="button" aria-expanded="false" aria-controls="readout status"
+            aria-label="Show tree data status">ⓘ</button>
+    <div id="infoBackdrop"></div>
+
+    <div class="readout" id="readout">
       <div><div class="big" id="shownCount">0</div><div class="lbl">trees shown</div></div>
-      <div><div class="big" id="speciesCount">0</div><div class="lbl">species on</div></div>
+      <div><div class="big" id="speciesCount">0</div><div class="lbl">species</div></div>
     </div>
 
     <div class="controls">
@@ -527,6 +601,16 @@ document.getElementById('addAll').addEventListener('click', ()=>{
 document.getElementById('removeAll').addEventListener('click', ()=>{
   selected.clear(); update();
 });
+
+/* ============================ Info overlay (mobile) ============================ */
+const infoToggle = document.getElementById('infoToggle');
+function setInfoOpen(open){
+  document.body.classList.toggle('info-open', open);
+  infoToggle.setAttribute('aria-expanded', String(open));
+}
+infoToggle.addEventListener('click', ()=> setInfoOpen(!document.body.classList.contains('info-open')));
+document.getElementById('infoBackdrop').addEventListener('click', ()=> setInfoOpen(false));
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') setInfoOpen(false); });
 
 /* ============================ Glue ============================ */
 function update(){ renderChips(); render(); }
