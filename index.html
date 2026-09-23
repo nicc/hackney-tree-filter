@@ -471,7 +471,10 @@ map.attributionControl.setPrefix(false);   // drop Leaflet's own "Leaflet |" cre
 // <style>), so a default top-left zoom control would sit right under it —
 // bottom-right is the one corner the panel never reaches, folded or not.
 L.control.zoom({position:'bottomright'}).addTo(map);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+// The CARTO key is locked to mcnoose.com and 403s anywhere else, so local runs
+// go keyless (watermarked tiles) rather than getting a blank map.
+const cartoKey = /(^|\.)mcnoose\.com$/.test(location.hostname) ? '?key=cb1_3v1i_1_9979656e5691400cf3f49dcc' : '';
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' + cartoKey, {
   attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="https://carto.com/attributions">CARTO</a> &amp; LB Hackney',
   subdomains:'abcd', maxZoom:19
 }).addTo(map);
