@@ -10,6 +10,7 @@ involved), extracts just the fields the app needs, and writes a
 self-contained dist/ folder:
 
     dist/index.html   a copy of the app
+    dist/favicon/     tab, bookmark and home-screen icons
     dist/trees.json   cached tree data + a build timestamp
     dist/.htaccess    tells Apache to gzip trees.json (~3.5MB -> ~400KB) —
                       matters most on a slow mobile connection; harmless
@@ -38,6 +39,7 @@ from datetime import datetime, timezone
 
 UPSTREAM = "https://map2.hackney.gov.uk/geoserver/ows"
 HTML_NAME = "index.html"
+FAVICON_DIR = "favicon"
 HTACCESS_SRC = "htaccess"          # committed without the leading dot so it isn't
 HTACCESS_OUT_DOTTED = ".htaccess"  # mistaken for a live config file in the repo root
 HTACCESS_OUT_PLAIN = "htaccess"    # dotfile twin — many FTP clients hide/mangle
@@ -170,6 +172,7 @@ def main():
         }, f, separators=(",", ":"))
 
     shutil.copyfile(os.path.join(HERE, HTML_NAME), os.path.join(out_dir, HTML_NAME))
+    shutil.copytree(os.path.join(HERE, FAVICON_DIR), os.path.join(out_dir, FAVICON_DIR), dirs_exist_ok=True)
     shutil.copyfile(os.path.join(HERE, HTACCESS_SRC), os.path.join(out_dir, HTACCESS_OUT_DOTTED))
     shutil.copyfile(os.path.join(HERE, HTACCESS_SRC), os.path.join(out_dir, HTACCESS_OUT_PLAIN))
 

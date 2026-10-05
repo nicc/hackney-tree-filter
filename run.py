@@ -23,6 +23,8 @@ import urllib.request
 import webbrowser
 
 UPSTREAM = "https://map2.hackney.gov.uk/geoserver/ows"
+FAVICON_DIR = "favicon"
+FAVICON_TYPES = {".svg": "image/svg+xml", ".ico": "image/x-icon", ".png": "image/png"}
 PROXY_PATH = "/geoserver/ows"
 HTML_NAME = "index.html"
 PREFERRED_PORT = 8080
@@ -57,8 +59,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.proxy()
         elif self.path.split("?", 1)[0] in ("/", "/index.html", "/" + HTML_NAME):
             self.serve_page()
+        elif self.path.split("?", 1)[0].startswith("/" + FAVICON_DIR + "/"):
+            self.serve_favicon()
         else:
             self.send_error(404)
+
+    def serve_favicon(self):
+        name = os.path.basename(self.path.split("?", 1)[0])
+        path = os.path.join(HERE, FAVICON_DIR, name)
+        ctype = FAVICON_TYPES.get(os.path.splitext(name)[1])
+        if not ctype or not os.path.isfile(path):
+            self.send_error(404)
+            return
+        with open(path, "rb") as f:
+            body = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def serve_page(self):
         self.send_response(200)
